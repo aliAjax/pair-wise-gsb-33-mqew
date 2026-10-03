@@ -26,6 +26,7 @@ func Setup(cfg *config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 	gardenRepo := repository.NewUserGardenRepository(db)
 	questionRepo := repository.NewQuestionRepository(db)
 	answerRepo := repository.NewAnswerRepository(db)
+	quizRepo := repository.NewQuizRepository(db)
 
 	// services
 	userService := service.NewUserService(userRepo, logger, cfg)
@@ -37,6 +38,7 @@ func Setup(cfg *config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 	gardenService := service.NewUserGardenService(gardenRepo, logger)
 	questionService := service.NewQuestionService(questionRepo, answerRepo, userService, logger)
 	answerService := service.NewAnswerService(db, answerRepo, questionRepo, logger)
+	quizService := service.NewQuizService(quizRepo, logger)
 
 	// handlers
 	userHandler := handler.NewUserHandler(userService, logger)
@@ -48,6 +50,7 @@ func Setup(cfg *config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 	gardenHandler := handler.NewUserGardenHandler(gardenService, logger)
 	questionHandler := handler.NewQuestionHandler(questionService, logger)
 	answerHandler := handler.NewAnswerHandler(answerService, logger)
+	quizHandler := handler.NewQuizHandler(quizService, logger)
 	uploadHandler := handler.NewUploadHandler(cfg, logger)
 	homeHandler := handler.NewHomeHandler(plantService, articleService)
 
@@ -73,6 +76,7 @@ func Setup(cfg *config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 		registerFavoriteRoutes(v1, cfg, favoriteHandler, limiter)
 		registerGardenRoutes(v1, cfg, gardenHandler, limiter)
 		registerQuestionRoutes(v1, cfg, questionHandler, answerHandler, limiter)
+		registerQuizRoutes(v1, cfg, quizHandler, limiter)
 		v1.POST("/uploads", middleware.AuthRequired(cfg), limiter.Limit(), uploadHandler.Upload)
 		v1.PUT("/answers/:id/like", middleware.AuthRequired(cfg), answerHandler.Like)
 	}

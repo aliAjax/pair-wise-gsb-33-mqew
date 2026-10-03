@@ -21,6 +21,13 @@ func migrate(db *gorm.DB) error {
 		&model.UserGarden{},
 		&model.Question{},
 		&model.Answer{},
+		&model.QuizQuestion{},
+		&model.QuizSet{},
+		&model.QuizSetVersion{},
+		&model.QuizAttempt{},
+		&model.QuizAttemptAnswer{},
+		&model.QuizReviewItem{},
+		&model.QuizReviewAnswer{},
 	)
 }
 
@@ -30,7 +37,8 @@ func seed(db *gorm.DB) error {
 		return err
 	}
 	if count > 0 {
-		return nil
+		// 老库也要幂等补齐知识点题集数据（新表迁移后首次启动）。
+		return seedQuiz(db, slog.Default())
 	}
 	logger := slog.Default()
 
@@ -99,6 +107,10 @@ func seed(db *gorm.DB) error {
 		{QuestionID: questions[1].ID, UserID: admin.ID, Content: "可以砍头繁殖，砍下的头部晾干后重新扦插，母株会萌发侧芽。", LikeCount: 8},
 	}
 	if err := db.Create(&answers).Error; err != nil {
+		return err
+	}
+
+	if err := seedQuiz(db, logger); err != nil {
 		return err
 	}
 

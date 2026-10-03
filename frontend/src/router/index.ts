@@ -13,7 +13,9 @@ const routes: RouteRecordRaw[] = [
   { path: '/garden', name: 'garden', component: () => import('@/pages/Garden.vue'), meta: { title: '我的花园', requiresAuth: true } },
   { path: '/questions', name: 'questions', component: () => import('@/pages/QuestionCommunity.vue'), meta: { title: '问答社区' } },
   { path: '/questions/:id', name: 'questionDetail', component: () => import('@/pages/QuestionDetail.vue'), meta: { title: '问题详情' } },
-  { path: '/quiz', name: 'quiz', component: () => import('@/pages/Quiz.vue'), meta: { title: '养护测验' } },
+  { path: '/quiz', name: 'quiz', component: () => import('@/pages/Quiz.vue'), meta: { title: '养护测验', requiresAuth: true } },
+  { path: '/quiz/attempt/:attemptNo', name: 'quizAttempt', component: () => import('@/pages/QuizAttempt.vue'), meta: { title: '测验作答', requiresAuth: true } },
+  { path: '/quiz/review', name: 'quizReview', component: () => import('@/pages/QuizReview.vue'), meta: { title: '错题复习', requiresAuth: true } },
   { path: '/profile', name: 'profile', component: () => import('@/pages/Profile.vue'), meta: { title: '个人中心', requiresAuth: true } },
   { path: '/login', name: 'login', component: () => import('@/pages/Login.vue'), meta: { title: '登录' } },
 ]

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { login as apiLogin, register as apiRegister, getProfile } from '@/api/user'
+import { useQuizStore } from './quizStore'
 import type { UserInfo } from '@/types/api'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -33,6 +34,8 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     user.value = null
     localStorage.removeItem('gbplantwiki_token')
+    // 清空用户相关缓存，避免下一个登录用户读到上一人的测验进度。
+    useQuizStore().reset()
   }
 
   return { token, user, isLoggedIn, isAdmin, login, register, fetchProfile, logout }

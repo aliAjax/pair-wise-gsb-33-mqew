@@ -67,7 +67,7 @@ gb-61/
 │   ├── cmd/server/              # main.go + migrate/seed
 │   └── internal/
 │       ├── config/              # 环境变量解析
-│       ├── model/               # 9 个实体，按实体分文件
+│       ├── model/               # 实体按文件分文件（含题集/版本/尝试/复习 7 个测验模型）
 │       ├── repository/          # 按实体分文件，哨兵错误
 │       ├── service/             # 按实体分文件，构造器注入
 │       ├── handler/             # 按实体分文件 + upload/home
@@ -79,12 +79,13 @@ gb-61/
 └── frontend/
     ├── nginx.conf               # /api 反代 backend + SPA
     └── src/
-        ├── api/                 # user/plant/article/pest/reminder/favorite/garden/question
-        ├── stores/              # authStore/userStore/plantStore/articleStore/reminderStore
-        ├── components/common/   # PlantCard/CareArticleCard/FavoriteButton/SearchFilter/...
-        ├── hooks/               # useAuth/useFavorite/useReminderStats/useQuiz
-        ├── pages/               # Home/PlantLibrary/PlantDetail/ArticleList/.../Login
+        ├── api/                 # user/plant/article/pest/reminder/favorite/garden/question/quiz
+        ├── stores/              # authStore/userStore/plantStore/articleStore/reminderStore/quizStore
+        ├── components/common/   # PlantCard/CareArticleCard/FavoriteButton/SearchFilter/QuizCard...
+        ├── hooks/               # useAuth/useFavorite/useReminderStats
+        ├── pages/               # Home/PlantLibrary/.../Quiz/QuizAttempt/QuizReview/Login
         ├── router/              # index.ts + guards.ts
+        ├── types/               # api/quiz 等接口类型
         ├── utils/               # request/dateFormat/season
         └── constants/           # plant/article/favorite/errorCodes
 ```
@@ -160,6 +161,16 @@ gb-61/
 | PUT | /api/v1/questions/:id/adopt | 登录 | 采纳最佳回答（事务：清旧最佳+标最佳+关闭问题） |
 | PUT | /api/v1/answers/:id/like | 登录 | 回答点赞 |
 | POST | /api/v1/uploads | 登录（限流） | 上传图片 |
+| GET | /api/v1/quiz/sets | 登录 | 知识点题集列表（品种/文章/病虫害，含最新版本号） |
+| GET | /api/v1/quiz/progress | 登录 | 我的测验进度（各题集状态/首次成绩/错题数，首页与复习页共用） |
+| POST | /api/v1/quiz/attempts | 登录 | 开始作答（携带客户端 attempt_no，按号幂等；开始时锁定题集最新版本） |
+| GET | /api/v1/quiz/attempts/:attemptNo | 登录 | 查看某次作答（进行中/已完成均按其版本快照展示） |
+| POST | /api/v1/quiz/attempts/submit | 登录 | 交卷判分（同一 attempt_no 只认首次结果，重试不重复累计） |
+| GET | /api/v1/quiz/review | 登录 | 错题复习清单（连续答对 2 次退出） |
+| POST | /api/v1/quiz/review/answer | 登录 | 复习单题作答（answer_no 幂等，重试不重复累计连对） |
+| GET | /api/v1/quiz/admin/questions | 管理员 | 题库题目列表（可按 category 过滤） |
+| POST | /api/v1/quiz/admin/questions | 管理员（限流） | 新增题目并自动级联发布题集新版本 |
+| PUT | /api/v1/quiz/admin/questions/:id | 管理员 | 修改题目（含改答案）并自动级联发布新版本 |
 
 ## 枚举出现位置清单
 
@@ -177,6 +188,19 @@ gb-61/
 
 - 后端：`backend/internal/constants/favorite.go`（定义）、`backend/internal/model/favorite.go`（模型）、`backend/internal/service/favorite_service.go`（校验）、`backend/internal/constants/log_templates.go`、`database/init.sql`
 - 前端：`frontend/src/constants/favorite.ts`（定义）、`frontend/src/components/common/FavoriteButton.vue`（交互）、`frontend/src/pages/Garden.vue` 与 `frontend/src/pages/Profile.vue`（收藏夹列表）
+
+## 知识点题集（版本化测验）
+
+测验内容按知识点整理为三册：**植物品种**、**养护文章**、**病虫害识别与防治**。核心规则：
+
+- **版本快照**：每次题库变更（新增/修改题目或答案）自动级联发布题集新版本，题面、选项、正确答案与解析在发布时整体快照（`quiz_set_versions.snapshot`）。
+- **作答锁定版本**：开始作答时锁定当时最新版本。题库更新后，**未开始**的题集使用新版本；**进行中**与**已完成**的作答始终按原版本查看，不会出现"当时为什么判对说不清"。
+- **首次结果为准**：同一题集的成绩统计只认**首次完成**的尝试，重新作答不重复累计。
+- **幂等重试**：开始与交卷均携带客户端生成的 `attempt_no`，复习作答携带 `answer_no`；写入失败/超时按同一号重试，服务端回放首次结果，成绩与连对次数不重复累计。
+- **错题复习**：交卷答错的题进入复习清单，需在复习页**连续答对 2 次**才退出，中途答错计数清零。
+- **进度同源**：首页进度卡片与测验/复习页均读取 `GET /quiz/progress`（前端共享 Pinia store），口径一致。
+
+相关数据表：`quiz_questions`、`quiz_sets`、`quiz_set_versions`、`quiz_attempts`、`quiz_attempt_answers`、`quiz_review_items`、`quiz_review_answers`。
 
 ## 横切关注点
 

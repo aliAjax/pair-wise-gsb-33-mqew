@@ -12,6 +12,28 @@
       <el-alert :title="`当季养护重点：${seasonTask}`" type="success" :closable="false" show-icon />
     </section>
 
+    <section v-if="auth.isLoggedIn" class="quiz-banner">
+      <el-card shadow="hover" :body-style="{ padding: '16px 20px' }">
+        <div class="quiz-banner-inner">
+          <div class="quiz-info">
+            <div class="quiz-title">📝 养护知识小测验</div>
+            <div class="quiz-meta" v-if="quizStore.progress">
+              累计成绩 {{ quizStore.progress.total_score }} / {{ quizStore.progress.total_questions }}
+              · 已完成 {{ doneSetCount }}/{{ quizStore.progress.sets.length }} 题集
+              · <span :class="{ 'todo': quizStore.progress.review_count > 0 }">错题复习 {{ quizStore.progress.review_count }} 题</span>
+            </div>
+            <div class="quiz-meta" v-else>品种、文章、病虫害三大知识点题集，开始你的第一次作答。</div>
+          </div>
+          <div class="quiz-actions">
+            <el-button v-if="(quizStore.progress?.review_count ?? 0) > 0" type="warning" @click="router.push('/quiz/review')">
+              复习错题（{{ quizStore.progress?.review_count }}）
+            </el-button>
+            <el-button type="primary" @click="router.push('/quiz')">进入测验</el-button>
+          </div>
+        </div>
+      </el-card>
+    </section>
+
     <section>
       <h2>🔥 热门品种</h2>
       <el-row :gutter="16">
@@ -33,26 +55,36 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import PlantCard from '@/components/common/PlantCard.vue'
 import CareArticleCard from '@/components/common/CareArticleCard.vue'
 import { currentSeasonTask } from '@/utils/season'
+import { useAuthStore } from '@/stores/authStore'
+import { useQuizStore } from '@/stores/quizStore'
 import type { PlantSpecies } from '@/constants/plant'
 import type { CareArticle } from '@/constants/article'
 
 const router = useRouter()
+const auth = useAuthStore()
+const quizStore = useQuizStore()
 const keyword = ref('')
 const seasonTask = ref(currentSeasonTask())
 const hotPlants = ref<PlantSpecies[]>([])
 const latestArticles = ref<CareArticle[]>([])
+
+const doneSetCount = computed(() => (quizStore.progress?.sets || []).filter((s) => s.status === 'done').length)
 
 onMounted(async () => {
   const res = await axios.get('/api/v1/home/overview')
   hotPlants.value = res.data.data.hot_plants || []
   latestArticles.value = res.data.data.latest_articles || []
   seasonTask.value = res.data.data.season_task || seasonTask.value
+  // 首页测验进度与复习页读取同一结果（共享 store）。
+  if (auth.isLoggedIn) {
+    quizStore.fetchProgress(true).catch(() => undefined)
+  }
 })
 
 function doSearch() {
@@ -69,5 +101,11 @@ function doSearch() {
 .sub { color: #888; }
 .search { max-width: 560px; margin: 16px auto; }
 .season-banner { margin: 8px 0 24px; }
+.quiz-banner { margin: 8px 0 24px; }
+.quiz-banner-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.quiz-title { font-weight: 700; color: #2c6e49; font-size: 16px; }
+.quiz-meta { color: #666; font-size: 13px; margin-top: 4px; }
+.quiz-meta .todo { color: #e6a23c; font-weight: 600; }
+.quiz-actions { display: flex; gap: 8px; flex-shrink: 0; }
 h2 { color: #333; margin: 24px 0 16px; }
 </style>
