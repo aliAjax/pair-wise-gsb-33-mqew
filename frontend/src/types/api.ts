@@ -76,3 +76,64 @@ export interface Answer {
   like_count: number
   created_at: string
 }
+
+export type QuizMyStatus = 'not_started' | 'in_progress' | 'completed'
+
+export interface QuizSetItem {
+  id: number
+  title: string
+  category: string
+  category_text: string
+  description: string
+  version: number
+  question_count: number
+  my_status: QuizMyStatus
+  my_status_text: string
+  my_attempt_id: number
+  best_score: number
+  best_total: number
+}
+
+export interface QuizQuestionResult {
+  question_id: number
+  question: string
+  options: string[]
+  answer: number | null
+  explanation: string
+  selected: number | null
+  correct: boolean
+}
+
+export interface QuizAttemptDetail {
+  attempt_id: number
+  quiz_set_id: number
+  attempt_no: number
+  set_version: number
+  status: 'in_progress' | 'submitted'
+  status_text: string
+  score: number
+  total: number
+  submitted_at: string | null
+  questions: QuizQuestionResult[]
+}
+
+export interface QuizReviewItem {
+  question_id: number
+  quiz_set_id: number
+  question: string
+  options: string[]
+  consecutive_correct: number
+}
+
+export interface QuizReviewAnswerResult {
+  correct: boolean
+  consecutive_correct: number
+  resolved: boolean
+  answer: number
+  explanation: string
+}
+
+export interface QuizReviewProgress {
+  pending: number
+  resolved: number
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log/slog"
 
 	"golang.org/x/crypto/bcrypt"
@@ -21,6 +22,10 @@ func migrate(db *gorm.DB) error {
 		&model.UserGarden{},
 		&model.Question{},
 		&model.Answer{},
+		&model.QuizSet{},
+		&model.QuizQuestion{},
+		&model.QuizAttempt{},
+		&model.QuizWrongQuestion{},
 	)
 }
 
@@ -102,8 +107,90 @@ func seed(db *gorm.DB) error {
 		return err
 	}
 
+	if err := seedQuizSets(db); err != nil {
+		return err
+	}
+
 	logger.Info("gbplantwiki seed data created",
 		"users", 2, "plants", len(plants), "articles", len(articles),
 		"pests", len(pests), "reminders", len(reminders), "questions", len(questions), "answers", len(answers))
+	return nil
+}
+
+// quizSeedQuestion is one seed question of a knowledge-point quiz set.
+type quizSeedQuestion struct {
+	question    string
+	options     []string
+	answer      int
+	explanation string
+}
+
+// seedQuizSets organizes plant species, care articles and disease/pest
+// content into knowledge-point quiz sets at bank version 1.
+func seedQuizSets(db *gorm.DB) error {
+	sets := []struct {
+		title       string
+		category    string
+		description string
+		questions   []quizSeedQuestion
+	}{
+		{
+			title:       "品种知识速览",
+			category:    constants.QuizCategoryPlant,
+			description: "来自品种库的基础知识：类型、光照、浇水与适温。",
+			questions: []quizSeedQuestion{
+				{"以下哪种植物属于多肉植物？", []string{"月季", "多肉吉娃娃", "碗莲", "龟背竹"}, 1, "多肉吉娃娃为景天科拟石莲属多肉植物。"},
+				{"龟背竹适合的光照条件是？", []string{"全日照", "散射光", "完全黑暗", "强直射光"}, 1, "龟背竹耐阴，适合明亮散射光环境。"},
+				{"碗莲属于哪种类型的植物？", []string{"观花", "观叶", "多肉", "水生"}, 3, "碗莲是小型水生花卉，适合庭院水缸栽培。"},
+				{"库拉索芦荟建议的浇水频率是？", []string{"每天1次", "每周3次", "每两周1次", "保持水位"}, 2, "库拉索芦荟耐旱，每两周浇水1次即可。"},
+				{"月季适宜的生长温度范围是？", []string{"5~30°C", "18~30°C", "15~35°C", "10~28°C"}, 0, "月季适宜温度为 5~30°C。"},
+			},
+		},
+		{
+			title:       "养护文章要点",
+			category:    constants.QuizCategoryArticle,
+			description: "来自养护文章的核心结论：换盆、施肥、修剪与繁殖。",
+			questions: []quizSeedQuestion{
+				{"换盆的最佳季节通常是？", []string{"夏季", "深冬", "春季", "雨季"}, 2, "春季气温回升、根系活跃，是换盆最佳时机。"},
+				{"换盆前应提前停止浇水几天？", []string{"1天", "3天", "7天", "不需要"}, 1, "换盆前停止浇水3天，便于脱盆且减少伤根。"},
+				{"多肉植物生长季施肥的原则是？", []string{"薄肥勤施", "大量施肥", "只施氮肥", "休眠期施肥"}, 0, "多肉施肥宜稀薄，生长季每月一次稀释液肥，休眠期停止。"},
+				{"月季夏季修剪应以什么为主？", []string{"重剪塑形", "轻剪残花和细弱枝", "不修剪", "剪光叶片"}, 1, "夏季以轻剪为主，剪除残花和细弱枝，促进复花。"},
+				{"龟背竹扦插繁殖应选取？", []string{"嫩叶", "带气生根的健壮枝条", "花朵", "根系全部剪除的枝条"}, 1, "选取带气生根的健壮枝条，切口晾干后插入湿润蛭石。"},
+			},
+		},
+		{
+			title:       "病虫害防治手册",
+			category:    constants.QuizCategoryPest,
+			description: "来自病虫害手册的识别与防治要点。",
+			questions: []quizSeedQuestion{
+				{"月季黑斑病的典型症状是？", []string{"叶片白粉", "黑色圆形斑点边缘放射状", "叶背蛛网", "叶片卷曲"}, 1, "黑斑病叶片出现黑色圆形斑点，边缘呈放射状。"},
+				{"多肉介壳虫危害的典型表现是？", []string{"叶腋白色棉絮状物", "叶片出现黑斑", "叶背蛛网", "叶片水渍状病斑"}, 0, "介壳虫在叶腋处形成白色棉絮状物，叶片发黏发黄。"},
+				{"红蜘蛛容易在什么环境下滋生？", []string{"低温高湿", "空气干燥高温", "阴暗潮湿", "通风良好"}, 1, "空气干燥、高温环境螨虫易滋生。"},
+				{"龟背竹叶斑病的主要诱因是？", []string{"光照过强", "浇水过多长期积水", "施肥不足", "温度过低"}, 1, "浇水过多、长期积水导致病原真菌感染。"},
+				{"防治月季黑斑病可喷施哪种药剂？", []string{"多菌灵", "代森锰锌", "阿维菌素", "噻嗪酮"}, 1, "喷施代森锰锌或苯醚甲环唑，每周一次连续2-3次。"},
+			},
+		},
+	}
+	for _, s := range sets {
+		set := model.QuizSet{Title: s.title, Category: s.category, Description: s.description, Version: 1, Status: model.QuizSetStatusPublished}
+		if err := db.Create(&set).Error; err != nil {
+			return err
+		}
+		rows := make([]model.QuizQuestion, 0, len(s.questions))
+		for i, q := range s.questions {
+			optionsJSON, err := json.Marshal(q.options)
+			if err != nil {
+				return err
+			}
+			rows = append(rows, model.QuizQuestion{
+				QuizSetID: set.ID, Version: 1, Question: q.question,
+				Options: string(optionsJSON), Answer: q.answer,
+				Explanation: q.explanation, Sort: i,
+			})
+		}
+		if err := db.Create(&rows).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }

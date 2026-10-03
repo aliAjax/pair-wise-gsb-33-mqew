@@ -118,6 +118,64 @@ CREATE TABLE IF NOT EXISTS answers (
   KEY idx_answers_question (question_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS quiz_sets (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(128) NOT NULL,
+  category VARCHAR(16) NOT NULL,
+  description VARCHAR(255) DEFAULT '',
+  version INT NOT NULL DEFAULT 1,
+  status VARCHAR(16) NOT NULL DEFAULT 'published',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY idx_quiz_sets_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  quiz_set_id BIGINT UNSIGNED NOT NULL,
+  version INT NOT NULL DEFAULT 1,
+  question VARCHAR(512) NOT NULL,
+  options JSON NOT NULL,
+  answer INT NOT NULL,
+  explanation VARCHAR(512) DEFAULT '',
+  sort INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_quiz_questions_set_version (quiz_set_id, version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  quiz_set_id BIGINT UNSIGNED NOT NULL,
+  attempt_no INT NOT NULL,
+  set_version INT NOT NULL,
+  snapshot JSON,
+  answers JSON,
+  score INT NOT NULL DEFAULT 0,
+  total INT NOT NULL DEFAULT 0,
+  status VARCHAR(16) NOT NULL DEFAULT 'in_progress',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  submitted_at DATETIME(3) NULL,
+  UNIQUE KEY uk_quiz_attempt_user_set_no (user_id, quiz_set_id, attempt_no),
+  KEY idx_quiz_attempts_user (user_id),
+  KEY idx_quiz_attempts_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS quiz_wrong_questions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  quiz_set_id BIGINT UNSIGNED NOT NULL,
+  question_id BIGINT UNSIGNED NOT NULL,
+  snapshot JSON,
+  consecutive_correct INT NOT NULL DEFAULT 0,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_quiz_wrong_user_question (user_id, question_id),
+  KEY idx_quiz_wrong_user (user_id),
+  KEY idx_quiz_wrong_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 种子数据
 INSERT INTO users (username, email, password_hash, nickname, bio, role) VALUES
   ('admin', 'admin@gbplantwiki.local', '$2a$10$92HNAGfeO3qr7w17GkmGaOaBDxCQ7Q73gbeQ.dGGfgnIuhpPbZH4a', '园艺管理员', '平台内容维护管理员', 'admin'),
@@ -155,3 +213,26 @@ INSERT INTO questions (user_id, title, content, images, status) VALUES
 INSERT INTO answers (question_id, user_id, content, is_best, like_count) VALUES
   (1, 1, '新上盆植物根系未恢复，建议先放在散射光处缓苗，见干见湿浇水，避免积水。', 0, 5),
   (2, 1, '可以砍头繁殖，砍下的头部晾干后重新扦插，母株会萌发侧芽。', 0, 8);
+
+-- 知识点题集（品种 / 文章 / 病虫害），题库版本均为 1
+INSERT INTO quiz_sets (title, category, description, version, status) VALUES
+  ('品种知识速览', 'plant', '来自品种库的基础知识：类型、光照、浇水与适温。', 1, 'published'),
+  ('养护文章要点', 'article', '来自养护文章的核心结论：换盆、施肥、修剪与繁殖。', 1, 'published'),
+  ('病虫害防治手册', 'pest', '来自病虫害手册的识别与防治要点。', 1, 'published');
+
+INSERT INTO quiz_questions (quiz_set_id, version, question, options, answer, explanation, sort) VALUES
+  (1, 1, '以下哪种植物属于多肉植物？', JSON_ARRAY('月季', '多肉吉娃娃', '碗莲', '龟背竹'), 1, '多肉吉娃娃为景天科拟石莲属多肉植物。', 0),
+  (1, 1, '龟背竹适合的光照条件是？', JSON_ARRAY('全日照', '散射光', '完全黑暗', '强直射光'), 1, '龟背竹耐阴，适合明亮散射光环境。', 1),
+  (1, 1, '碗莲属于哪种类型的植物？', JSON_ARRAY('观花', '观叶', '多肉', '水生'), 3, '碗莲是小型水生花卉，适合庭院水缸栽培。', 2),
+  (1, 1, '库拉索芦荟建议的浇水频率是？', JSON_ARRAY('每天1次', '每周3次', '每两周1次', '保持水位'), 2, '库拉索芦荟耐旱，每两周浇水1次即可。', 3),
+  (1, 1, '月季适宜的生长温度范围是？', JSON_ARRAY('5~30°C', '18~30°C', '15~35°C', '10~28°C'), 0, '月季适宜温度为 5~30°C。', 4),
+  (2, 1, '换盆的最佳季节通常是？', JSON_ARRAY('夏季', '深冬', '春季', '雨季'), 2, '春季气温回升、根系活跃，是换盆最佳时机。', 0),
+  (2, 1, '换盆前应提前停止浇水几天？', JSON_ARRAY('1天', '3天', '7天', '不需要'), 1, '换盆前停止浇水3天，便于脱盆且减少伤根。', 1),
+  (2, 1, '多肉植物生长季施肥的原则是？', JSON_ARRAY('薄肥勤施', '大量施肥', '只施氮肥', '休眠期施肥'), 0, '多肉施肥宜稀薄，生长季每月一次稀释液肥，休眠期停止。', 2),
+  (2, 1, '月季夏季修剪应以什么为主？', JSON_ARRAY('重剪塑形', '轻剪残花和细弱枝', '不修剪', '剪光叶片'), 1, '夏季以轻剪为主，剪除残花和细弱枝，促进复花。', 3),
+  (2, 1, '龟背竹扦插繁殖应选取？', JSON_ARRAY('嫩叶', '带气生根的健壮枝条', '花朵', '根系全部剪除的枝条'), 1, '选取带气生根的健壮枝条，切口晾干后插入湿润蛭石。', 4),
+  (3, 1, '月季黑斑病的典型症状是？', JSON_ARRAY('叶片白粉', '黑色圆形斑点边缘放射状', '叶背蛛网', '叶片卷曲'), 1, '黑斑病叶片出现黑色圆形斑点，边缘呈放射状。', 0),
+  (3, 1, '多肉介壳虫危害的典型表现是？', JSON_ARRAY('叶腋白色棉絮状物', '叶片出现黑斑', '叶背蛛网', '叶片水渍状病斑'), 0, '介壳虫在叶腋处形成白色棉絮状物，叶片发黏发黄。', 1),
+  (3, 1, '红蜘蛛容易在什么环境下滋生？', JSON_ARRAY('低温高湿', '空气干燥高温', '阴暗潮湿', '通风良好'), 1, '空气干燥、高温环境螨虫易滋生。', 2),
+  (3, 1, '龟背竹叶斑病的主要诱因是？', JSON_ARRAY('光照过强', '浇水过多长期积水', '施肥不足', '温度过低'), 1, '浇水过多、长期积水导致病原真菌感染。', 3),
+  (3, 1, '防治月季黑斑病可喷施哪种药剂？', JSON_ARRAY('多菌灵', '代森锰锌', '阿维菌素', '噻嗪酮'), 1, '喷施代森锰锌或苯醚甲环唑，每周一次连续2-3次。', 4);

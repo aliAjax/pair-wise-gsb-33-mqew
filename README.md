@@ -1,6 +1,6 @@
 # FloraWiki（植物养护知识百科平台）
 
-为园艺爱好者提供全面的植物养护指南：品种库、养护文章、病虫害诊断、季节养护日历、我的花园、问答社区与养护小测验，支持图文展示与个人花园/提醒管理。
+为园艺爱好者提供全面的植物养护指南：品种库、养护文章、病虫害诊断、季节养护日历、我的花园、问答社区与养护知识测验（知识点题集 + 错题复习），支持图文展示与个人花园/提醒管理。
 
 ## Docker Compose 一键启动（推荐）
 
@@ -67,26 +67,26 @@ gb-61/
 │   ├── cmd/server/              # main.go + migrate/seed
 │   └── internal/
 │       ├── config/              # 环境变量解析
-│       ├── model/               # 9 个实体，按实体分文件
+│       ├── model/               # 13 个实体，按实体分文件
 │       ├── repository/          # 按实体分文件，哨兵错误
 │       ├── service/             # 按实体分文件，构造器注入
 │       ├── handler/             # 按实体分文件 + upload/home
 │       ├── router/              # router.go + 按实体分文件
 │       ├── middleware/          # auth/rbac/rate_limiter/error_handler/logger/cors
 │       ├── dto/                 # 请求/响应结构体 + 统一响应包装
-│       ├── constants/           # plant/article/favorite/error_codes/log_templates/messages
+│       ├── constants/           # plant/article/favorite/quiz/error_codes/log_templates/messages
 │       └── util/                # jwt/logger/formatters/app_error/file/season
 └── frontend/
     ├── nginx.conf               # /api 反代 backend + SPA
     └── src/
-        ├── api/                 # user/plant/article/pest/reminder/favorite/garden/question
+        ├── api/                 # user/plant/article/pest/reminder/favorite/garden/question/quiz
         ├── stores/              # authStore/userStore/plantStore/articleStore/reminderStore
         ├── components/common/   # PlantCard/CareArticleCard/FavoriteButton/SearchFilter/...
         ├── hooks/               # useAuth/useFavorite/useReminderStats/useQuiz
-        ├── pages/               # Home/PlantLibrary/PlantDetail/ArticleList/.../Login
+        ├── pages/               # Home/PlantLibrary/.../Quiz/QuizReview/Login
         ├── router/              # index.ts + guards.ts
         ├── utils/               # request/dateFormat/season
-        └── constants/           # plant/article/favorite/errorCodes
+        └── constants/           # plant/article/favorite/quiz/errorCodes
 ```
 
 ## 环境变量
@@ -159,7 +159,24 @@ gb-61/
 | POST | /api/v1/questions/:id/answers | 登录 | 回答问题 |
 | PUT | /api/v1/questions/:id/adopt | 登录 | 采纳最佳回答（事务：清旧最佳+标最佳+关闭问题） |
 | PUT | /api/v1/answers/:id/like | 登录 | 回答点赞 |
+| GET | /api/v1/quiz/sets | 登录 | 题集列表（含我的状态/最佳成绩/当前题库版本） |
+| POST | /api/v1/quiz/sets/:id/attempts | 登录（限流） | 开始/继续答题：快照当前版本题面、选项与答案 |
+| GET | /api/v1/quiz/attempts/:id | 登录 | 查看尝试：进行中不含答案，已交卷含冻结答案与解析 |
+| POST | /api/v1/quiz/attempts/:id/submit | 登录（限流） | 交卷：按尝试号幂等，重复提交只返回首次结果 |
+| GET | /api/v1/quiz/review | 登录 | 错题复习清单（按答错时的快照回放） |
+| POST | /api/v1/quiz/review/answer | 登录 | 复习作答：连续答对 2 次移出清单，答错重置 |
+| GET | /api/v1/quiz/review/progress | 登录 | 复习进度（复习页与首页共用同一结果） |
+| POST | /api/v1/quiz/admin/sets | 管理员 | 新建题集（含首版题库） |
+| PUT | /api/v1/quiz/admin/sets/:id/questions | 管理员 | 整体替换题库并版本 +1（旧版本保留） |
 | POST | /api/v1/uploads | 登录（限流） | 上传图片 |
+
+## 养护测验与错题复习规则
+
+- **知识点题集**：品种库、养护文章、病虫害手册的内容整理为三类题集（`plant`/`article`/`pest`），题库按版本管理，更新只增新版本行、旧版本保留。
+- **答题固定版本**：开始答题时把题面、选项、答案快照进 `quiz_attempts.snapshot`；判分与成绩查看都按快照，题库改答案也能说清当时为什么判对。
+- **幂等提交**：`quiz_attempts` 唯一键 `(user_id, quiz_set_id, attempt_no)`；交卷事务内行锁，同一题集同时提交只认首次结果；写入失败后前端按同一尝试号自动重试一次，成绩不重复累计。
+- **版本可见性**：题库更新后，未开始的题集用新版本；进行中和已完成的尝试仍按原版本快照查看。
+- **错题复习**：答错的题进入复习清单，连续答对 2 次（`WrongQuestionResolveThreshold`）才移出，答错重置连对数；复习页与首页进度都读取 `GET /quiz/review/progress` 同一结果。
 
 ## 枚举出现位置清单
 
@@ -177,6 +194,11 @@ gb-61/
 
 - 后端：`backend/internal/constants/favorite.go`（定义）、`backend/internal/model/favorite.go`（模型）、`backend/internal/service/favorite_service.go`（校验）、`backend/internal/constants/log_templates.go`、`database/init.sql`
 - 前端：`frontend/src/constants/favorite.ts`（定义）、`frontend/src/components/common/FavoriteButton.vue`（交互）、`frontend/src/pages/Garden.vue` 与 `frontend/src/pages/Profile.vue`（收藏夹列表）
+
+### QuizCategory（题集知识点分类：plant/article/pest）
+
+- 后端：`backend/internal/constants/quiz.go`（定义）、`backend/internal/model/quiz_set.go`（模型）、`backend/internal/service/quiz_service.go` 与 `quiz_admin_service.go`（校验/组装）、`backend/internal/util/formatters.go`（QuizCategoryText）、`backend/internal/constants/log_templates.go`（日志模板）、`database/init.sql`（种子题集）
+- 前端：`frontend/src/constants/quiz.ts`（定义）、`frontend/src/pages/Quiz.vue`（分类标签）、`frontend/src/pages/QuizReview.vue`（复习规则常量）
 
 ## 横切关注点
 
